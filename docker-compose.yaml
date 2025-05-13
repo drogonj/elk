@@ -1,0 +1,92 @@
+
+services:
+  elasticsearch:
+    container_name: elasticsearch
+    build: elasticsearch
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
+        limits:
+          memory: 1.5G
+    environment:
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - KIBANA_SYSTEM_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+    ports:
+      - "3043:9200"
+    networks:
+      - elk_network
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: curl --fail -u elastic:${ELASTIC_PASSWORD} localhost:9200/_cat/health || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 120
+    restart: unless-stopped
+
+  logstash:
+    container_name: logstash
+    build: logstash
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
+        limits:
+          memory: 1.5G
+    environment:
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - LOGSTASH_INTERNAL_PASSWORD=${LOGSTASH_INTERNAL_PASSWORD}
+      - LOGSTASH_WRITER_USERNAME=${LOGSTASH_WRITER_USERNAME}
+      - LOGSTASH_WRITER_PASSWORD=${LOGSTASH_WRITER_PASSWORD}
+    ports:
+      - "3042:5044"
+      - "3041:9600"
+      - "3055:3055"
+    networks:
+      - elk_network
+    healthcheck:
+      test: curl --fail -s -XGET http://127.0.0.1:9600 || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 120
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    entrypoint: ["/tmp/setup_elastic_logstash.sh"]
+    restart: unless-stopped
+
+  kibana:
+    container_name: kibana
+    build: kibana
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
+        limits:
+          memory: 1.5G
+    environment:
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - KIBANA_SYSTEM_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=32caracteresaleatoires1234567890ab
+      - XPACK_SECURITY_ENCRYPTIONKEY=32caracteresaleatoires1234567890ab
+    ports:
+      - "3040:5601"
+    networks:
+      - elk_network
+    depends_on:
+      logstash:
+        condition: service_healthy
+    entrypoint: ["/tmp/setup_elastic_kibana_password.sh"]
+    restart: unless-stopped
+
+networks:
+  elk_network:
+    driver: bridge
+
+volumes:
+  elastic_data:
+          
